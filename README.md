@@ -2,11 +2,11 @@
 
 ![banner](https://user-images.githubusercontent.com/69801109/214294114-a718d378-6857-4182-9331-20869d64d3d9.png)
 
-For financial reinforcement learning (FinRL), we've found a way to address the dreaded overfitting trap and increase your chances of success in the wild world of cryptocurrency trading. Our approach has been tested on 10 different currencies and during a market crash period, and has proven to be more profitable than the competition. So, don't just sit there, join us on our journey to the top of the crypto mountain! 
+For financial reinforcement learning (FinRL), we provide a way to address the dreaded overfitting trap and increase your chances of success in the wild world of cryptocurrency trading. Our approach has been tested on 10 different currencies and during a market crash period, and has proven to be more profitable than the competition. So, don't just sit there, join us on our journey to the top of the crypto mountain! 
 
 ## Paper
 
-The original [paper](https://arxiv.org/abs/2209.05559) 
+Our [paper](https://arxiv.org/abs/2209.05559) 
 
 ## How to use
 
