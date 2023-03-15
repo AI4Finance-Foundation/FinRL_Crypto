@@ -1,10 +1,10 @@
-# FinRL-Crypto: Address Overfitting Your DRL Agents for Cryptocurrency Trading 
+# FinRL_Crypto: Address Overfitting Your DRL Agents for Cryptocurrency Trading 
 
 ![banner](https://user-images.githubusercontent.com/69801109/214294114-a718d378-6857-4182-9331-20869d64d3d9.png)
 
 For financial reinforcement learning (FinRL), we've found a way to address the dreaded overfitting trap and increase your chances of success in the wild world of crypto. Our approach has been tested on 10 different currencies and during a market crash period, and has proven to be more profitable than the competition. So, don't just sit there, join us on our journey to the top of the crypto mountain! 
 
-## Collaborators
+## Paper
 
 The original [paper](https://arxiv.org/abs/2209.05559) 
 
@@ -38,7 +38,7 @@ Then, running and producing similar results to that in the paper are simple, fol
 
 Simply run the scripts in the above order. Please note the trained agents are auto-saved to the folder ```train_results```. That is where you can find your trained DRL agents!
 
-## Citing FinRL-Crypto
+## Citing FinRL_Crypto
 
 ```
 @article{gort2022deep,
