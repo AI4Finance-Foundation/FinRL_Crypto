@@ -173,7 +173,7 @@ class CryptoEnvAlpaca:  # custom env
     def get_state(self):
         state = np.hstack((self.cash * self.norm_cash, self.stocks * self.norm_stocks))
         for i in range(self.lookback):
-            tech_i = self.tech_array[-1 - i]
+            tech_i = self.tech_array[self.time - i]
             normalized_tech_i = tech_i * self.norm_tech
             state = np.hstack((state, normalized_tech_i)).astype(np.float32)
         return state
