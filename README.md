@@ -1,4 +1,4 @@
-# FinRL_Crypto: Address Overfitting Your DRL Agents for Cryptocurrency Trading 
+# FinRL_Crypto: Address Overfitting DRL Agents for Cryptocurrency Trading 
 
 ![banner](https://user-images.githubusercontent.com/69801109/214294114-a718d378-6857-4182-9331-20869d64d3d9.png)
 
