@@ -1,23 +1,51 @@
-binance==0.3
-elegantrl==0.3.3
-exchange_calendars==3.3
+# Binance API - проверенная версия для Python 3.10
+python-binance==1.0.19
+
+# Core ML/AI libraries - совместимые с Python 3.10
+torch==2.0.1
+numpy==1.24.4
+pandas==2.0.3
+scikit-learn==1.3.2
+scipy==1.11.4
+
+# Reinforcement Learning
+elegantrl==0.3.5
+gym==0.21.0  # классический gym лучше совместим с elegantrl
+
+# Optimization
+optuna==3.4.0
+
+# Data Processing
 fracdiff==0.9.0
-gym==0.21.0
-joblib==1.1.0
-matplotlib==3.4.3
-numpy==1.22.2
-optuna==2.10.0
-pandas==1.3.4
-psutil==5.8.0
-python_binance==1.0.15
-pytz==2021.3
-scikit_learn==1.2.0
-scipy==1.8.0
-seaborn==0.11.2
-statsmodels==0.13.2
-stockstats==0.3.2
-TA_Lib==0.4.21
-torch==1.9.1
-tqdm==4.63.0
-trading_calendars==2.1.1
-yfinance==0.1.63
+TA-Lib==0.4.24
+stockstats==0.5.0
+
+# Visualization
+matplotlib==3.7.3
+seaborn==0.12.2
+
+# Utilities
+tqdm==4.66.1
+psutil==5.9.6
+joblib==1.3.2
+pytz==2023.3
+
+# Finance data
+yfinance==0.2.21
+
+# Statistics
+statsmodels==0.14.0
+
+# Calendars
+exchange-calendars==4.3
+pandas-market-calendars==4.4.0
+
+# Network dependencies (требуются для python-binance)
+requests==2.31.0
+urllib3==1.26.18
+aiohttp==3.9.1
+websockets==11.0.3
+
+# Additional important dependencies
+types-urllib3==1.26.25.14
+certifi==2023.11.17

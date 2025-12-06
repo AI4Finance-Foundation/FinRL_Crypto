@@ -240,8 +240,55 @@ def embargo(cv: BaseTimeSeriesCrossValidator, train_indices: np.ndarray,
     if not hasattr(cv, 'embargo_td'):
         raise ValueError("The passed cross-validation object should have a member cv.embargo_td defining the embargo"
                          "time.")
-    last_test_eval_time = cv.eval_times.iloc[test_indices[test_indices <= test_fold_end]].max()
-    min_train_index = len(cv.pred_times[cv.pred_times <= last_test_eval_time + cv.embargo_td])
+    # Filter test indices that are within the test fold
+    valid_test_indices = test_indices[test_indices <= test_fold_end]
+
+    if len(valid_test_indices) == 0:
+        # No test indices in this fold, return original train indices
+        return train_indices
+
+    last_test_eval_time = cv.eval_times.iloc[valid_test_indices].max()
+
+    # Ensure last_test_eval_time is a pandas Timestamp for proper Timedelta addition
+    if isinstance(last_test_eval_time, (np.int64, np.integer)):
+        # Convert to Timestamp - using the first pred_time as reference
+        if len(cv.pred_times) > 0:
+            if isinstance(cv.pred_times, np.ndarray):
+                first_pred_time = cv.pred_times[0]
+            else:
+                first_pred_time = cv.pred_times.iloc[0]
+            last_test_eval_time = pd.Timestamp(first_pred_time)
+        else:
+            last_test_eval_time = pd.Timestamp.now()
+
+    # Convert pred_times to pandas Series if it's not already
+    if isinstance(cv.pred_times, np.ndarray):
+        pred_times_series = pd.Series(cv.pred_times)
+    else:
+        pred_times_series = cv.pred_times
+
+    # Convert pred_times to proper datetime Series
+    try:
+        # If pred_times_series contains objects like tuples/arrays, extract the datetime part
+        if len(pred_times_series) > 0:
+            sample = pred_times_series.iloc[0]
+            if isinstance(sample, (tuple, list, np.ndarray)):
+                # Extract the datetime (assume it's the first element)
+                pred_times_flat = pd.Series([item[0] if isinstance(item, (tuple, list, np.ndarray)) and len(item) > 0 else item
+                                           for item in pred_times_series])
+            else:
+                pred_times_flat = pred_times_series
+        else:
+            pred_times_flat = pred_times_series
+
+        # Convert to datetime if not already
+        pred_times_flat = pd.to_datetime(pred_times_flat)
+
+    except (ValueError, TypeError, IndexError):
+        # If conversion fails, return original train_indices (no embargo)
+        return train_indices
+
+    min_train_index = len(pred_times_flat[pred_times_flat <= last_test_eval_time + cv.embargo_td])
     if min_train_index < cv.indices.shape[0]:
         allowed_indices = np.concatenate((cv.indices[:test_fold_end], cv.indices[min_train_index:]))
         train_indices = np.intersect1d(train_indices, allowed_indices)

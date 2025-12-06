@@ -48,9 +48,18 @@ from talib import RSI, MACD, CCI, DX, ROC, ULTOSC, WILLR, OBV, HT_DCPHASE
 from config_api import *
 import datetime as dt
 from processor_Yahoo import Yahoofinance
-from fracdiff.sklearn import FracdiffStat
+try:
+    from fracdiff.sklearn import FracdiffStat
+except ImportError:
+    FracdiffStat = None
+    print("Warning: fracdiff not installed. Fractional differentiation will be skipped.")
 
-binance_client = Client(api_key=API_KEY_BINANCE, api_secret=API_SECRET_BINANCE)
+# Initialize Binance client only if API keys are provided
+if API_KEY_BINANCE != 'Enter your public key here!' and API_SECRET_BINANCE != 'Enter your secret key here!':
+    binance_client = Client(api_key=API_KEY_BINANCE, api_secret=API_SECRET_BINANCE)
+else:
+    binance_client = None
+    print("Warning: Binance API keys not configured. Please update config_api.py")
 
 class BinanceProcessor():
     def __init__(self):
@@ -58,9 +67,14 @@ class BinanceProcessor():
         self.start_date = None
         self.tech_indicator_list = None
         self.correlation_threshold = 0.9
-        self.binance_api_key = API_KEY_BINANCE  # Enter your own API-key here
-        self.binance_api_secret = API_SECRET_BINANCE  # Enter your own API-secret here
-        self.binance_client = Client(api_key=API_KEY_BINANCE, api_secret=API_SECRET_BINANCE)
+        self.binance_api_key = API_KEY_BINANCE
+        self.binance_api_secret = API_SECRET_BINANCE
+
+        # Initialize client with error handling
+        if self.binance_api_key == 'Enter your public key here!' or self.binance_api_secret == 'Enter your secret key here!':
+            raise ValueError("Please configure your Binance API keys in config_api.py before using BinanceProcessor")
+
+        self.binance_client = Client(api_key=self.binance_api_key, api_secret=self.binance_api_secret)
 
     def run(self, ticker_list, start_date, end_date, time_interval, technical_indicator_list, if_vix):
         self.start_date = start_date
@@ -96,19 +110,31 @@ class BinanceProcessor():
         self.interval = time_interval
         self.ticker_list = ticker_list
 
-        final_df = pd.DataFrame()
+        final_df_list = []
         for i in ticker_list:
-            hist_data = self.get_binance_bars(self.start_time, self.end_time, self.interval, symbol=i)
-            df = hist_data.iloc[:-1]
-            df = df.dropna()
-            df['tic'] = i
-            final_df = final_df.append(df)
+            try:
+                hist_data = self.get_binance_bars(self.start_time, self.end_time, self.interval, symbol=i)
+                df = hist_data.iloc[:-1]
+                df = df.dropna()
+                df['tic'] = i
+                final_df_list.append(df)
+            except Exception as e:
+                print(f"Warning: Failed to download data for {i}: {e}")
+                continue
+
+        if final_df_list:
+            final_df = pd.concat(final_df_list, ignore_index=True)
+        else:
+            raise ValueError("No data could be downloaded. Please check your internet connection and API keys.")
 
         return final_df
 
     def frac_diff_features(self, array):
-        print('Differentiating tech array...')
-        array = FracdiffStat().fit_transform(array)
+        if FracdiffStat is not None:
+            print('Differentiating tech array...')
+            array = FracdiffStat().fit_transform(array)
+        else:
+            print('Skipping fractional differentiation - fracdiff not available')
         return array
 
     def clean_data(self, df):
@@ -116,25 +142,33 @@ class BinanceProcessor():
         return df
 
     def add_technical_indicator(self, df, tech_indicator_list):
-        final_df = pd.DataFrame()
+        final_df_list = []
         for i in df.tic.unique():
             # use massive function in previous cell
             coin_df = df[df.tic == i].copy()
             coin_df = self.get_TALib_features_for_each_coin(coin_df)
 
             # Append constructed tic_df
-            final_df = final_df.append(coin_df)
+            final_df_list.append(coin_df)
 
-        return final_df
+        return pd.concat(final_df_list, ignore_index=True)
 
     def drop_correlated_features(self, df):
-        corr_matrix = pd.DataFrame(df).corr().abs()
-        upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(np.bool))
+        # Select only numeric columns for correlation
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        corr_matrix = df[numeric_cols].corr().abs()
+
+        # Create upper triangle mask
+        mask = np.triu(np.ones(corr_matrix.shape), k=1).astype(bool)
+        upper_tri = corr_matrix.where(mask)
+
         to_drop = [column for column in upper_tri.columns if any(upper_tri[column] > self.correlation_threshold)]
 
-        to_drop.remove('close')
+        if 'close' in to_drop:
+            to_drop.remove('close')
         print('according to analysis, drop: ', to_drop)
         real_drop = ['high', 'low', 'open', 'macd', 'cci', 'roc', 'willr']
+        real_drop = [col for col in real_drop if col in df.columns]  # Only drop existing columns
         print('dropping for model consistency: ', real_drop)
 
         df_uncorrelated = df.drop(real_drop, axis=1)
@@ -189,24 +223,26 @@ class BinanceProcessor():
         return list_regular_stamps
 
     def get_binance_bars(self, start_date, end_date, kline_size, symbol):
-        data_df = pd.DataFrame()
-        klines = self.binance_client.get_historical_klines(symbol, kline_size, start_date, end_date)
-        data = pd.DataFrame(klines,
-                            columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av',
-                                     'trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
-        data = data.drop(labels=['close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'], axis=1)
-        if len(data_df) > 0:
-            temp_df = pd.DataFrame(data)
-            data_df = data_df.append(temp_df)
-        else:
-            data_df = data
+        try:
+            klines = self.binance_client.get_historical_klines(symbol, kline_size, start_date, end_date)
 
-        data_df = data_df.apply(pd.to_numeric, errors='coerce')
-        data_df['time'] = [datetime.fromtimestamp(x / 1000.0) for x in data_df.timestamp]
-        # data.drop(labels=["timestamp"], axis=1)
-        data_df.index = [x for x in range(len(data_df))]
+            if not klines:
+                raise ValueError(f"No data returned for symbol {symbol}")
 
-        return data_df
+            data = pd.DataFrame(klines,
+                                columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_av',
+                                         'trades', 'tb_base_av', 'tb_quote_av', 'ignore'])
+            data = data.drop(labels=['close_time', 'quote_av', 'trades', 'tb_base_av', 'tb_quote_av', 'ignore'], axis=1)
+
+            data = data.apply(pd.to_numeric, errors='coerce')
+            data['time'] = [datetime.fromtimestamp(x / 1000.0) for x in data.timestamp]
+            data.index = [x for x in range(len(data))]
+
+            return data
+
+        except Exception as e:
+            print(f"Error fetching data for {symbol}: {e}")
+            raise
 
     def get_TALib_features_for_each_coin(self, tic_df):
 
