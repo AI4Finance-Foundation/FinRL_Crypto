@@ -73,7 +73,8 @@ class CryptoEnvAlpaca:  # custom env
         # state_dim = cash[1,1] + stocks[1,4] + tech_array[1,44] * lookback + stock_cooldown[1,4]
         self.state_dim = 1 + self.price_array.shape[1] + self.tech_array.shape[1] * self.lookback
         self.action_dim = self.price_array.shape[1]
-        self.minimum_qty_alpaca = ALPACA_LIMITS * 1.1  # 10 % safety factor
+        # Trim ALPACA_LIMITS to match action_dim to avoid broadcasting errors
+        self.minimum_qty_alpaca = (ALPACA_LIMITS[:self.action_dim] * 1.1)  # 10 % safety factor
         self.if_discrete = False
         self.target_return = 10**8
 

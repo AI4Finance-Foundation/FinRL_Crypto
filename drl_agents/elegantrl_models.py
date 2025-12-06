@@ -113,7 +113,7 @@ class DRLAgent:
 
         with _torch.no_grad():
             for i in range(environment.max_step):
-                s_tensor = _torch.as_tensor((state,), device=device)
+                s_tensor = _torch.as_tensor(state, device=device).unsqueeze(0)
                 a_tensor = act(s_tensor)  # action_tanh = act.forward()
                 action = (
                     a_tensor.detach().cpu().numpy()[0]

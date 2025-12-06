@@ -95,7 +95,16 @@ def set_Pandas_Timedelta(TIMEFRAME):
 
 
 def save_best_agent(study, trial):
-    if study.best_trial.number != trial.number:
+    # Skip if no trials have completed yet or if trial failed
+    try:
+        if len(study.trials) == 0:
+            return
+        if study.best_trial is None:
+            return
+        if study.best_trial.number != trial.number:
+            return
+    except (ValueError, AttributeError):
+        # Handle case where no trials have completed yet or best_trial is not available
         return
 
     print('\n' + bcolors.OKGREEN + 'Found new best agent!' + bcolors.ENDC + '\n')
@@ -269,6 +278,10 @@ def objective(trial, name_test, model_name, cwd, res_timestamp, gpu_id):
         sharpe_bot, sharpe_eqw, drl_rets_tmp = train_and_test(trial, price_array, tech_array, train_indices,
                                                               test_indices, env, model_name, env_params,
                                                               erl_params, break_step, cwd, gpu_id)
+
+        # Handle NaN values by replacing with 0
+        sharpe_bot = 0.0 if np.isnan(sharpe_bot) else sharpe_bot
+        sharpe_eqw = 0.0 if np.isnan(sharpe_eqw) else sharpe_eqw
 
         sharpe_list_ewq.append(sharpe_eqw)
         sharpe_list_bot.append(sharpe_bot)

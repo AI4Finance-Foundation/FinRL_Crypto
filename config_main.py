@@ -59,15 +59,14 @@ print(NUMBER_OF_SPLITS)
 no_candles_for_train = 20000
 no_candles_for_val = 5000
 
-TICKER_LIST = ['AAVEUSDT',
-               'AVAXUSDT',
+TICKER_LIST = [
                'BTCUSDT',
-               'NEARUSDT',
-               'LINKUSDT',
+            #    'NEARUSDT',
+            #    'LINKUSDT',
                'ETHUSDT',
-               'LTCUSDT',
-               'MATICUSDT',
-               'UNIUSDT',
+            #    'LTCUSDT',
+            #    'MATICUSDT',
+            #    'UNIUSDT',
                'SOLUSDT',
                ]
 
