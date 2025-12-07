@@ -55,14 +55,16 @@ class Arguments:
                 False  # use PER (Prioritized Experience Replay) for sparse reward
             )
         else:  # on-policy
-            self.max_memo = 2**12  # capacity of replay buffer
-            self.target_step = (
-                self.max_memo
+            # Adaptive buffer sizing for data-constrained scenarios
+            # Default to smaller buffer sizes that work with limited data
+            self.max_memo = min(2**12, 2**10)  # capacity of replay buffer (min 4096, 1024)
+            self.target_step = min(
+                self.max_memo, 2**10
             )  # repeatedly update network to keep critic's loss small
-            self.batch_size = (
-                self.net_dim * 2
-            )  # num of transitions sampled from replay buffer.
-            self.repeat_times = 2**4  # collect target_step, then update network
+            self.batch_size = min(
+                self.net_dim * 2, 2**9
+            )  # num of transitions sampled from replay buffer (max 512)
+            self.repeat_times = 2**3  # collect target_step, then update network (reduced from 16 to 8)
             self.if_use_gae = False  # use PER: GAE (Generalized Advantage Estimation) for sparse reward
 
         """Arguments for training"""
@@ -101,6 +103,19 @@ class Arguments:
         torch.manual_seed(self.random_seed)
         torch.set_num_threads(self.thread_num)
         torch.set_default_dtype(torch.float32)
+
+        # Adaptive buffer sizing based on available data
+        if hasattr(self, 'max_step') and self.max_step:
+            # Adjust buffer sizes to work with episode length
+            if not self.if_off_policy:  # PPO and other on-policy algorithms
+                # Ensure buffer doesn't exceed episode length
+                self.max_memo = min(self.max_memo, max(self.max_step * 2, 2**9))
+                self.target_step = min(self.target_step, max(self.max_step, 2**8))
+                self.batch_size = min(self.batch_size, max(self.max_step // 4, 2**6))
+
+                # Ensure we have at least some updates per episode
+                if self.repeat_times > 8:
+                    self.repeat_times = 8
 
         """auto set"""
         if self.cwd is None:

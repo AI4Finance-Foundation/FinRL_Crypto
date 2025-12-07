@@ -99,7 +99,14 @@ class BinanceProcessor():
         # Fracdiff input arrays
         # tech_array = self.frac_diff_features(tech_array)
 
-        return data, price_array, tech_array, time_array
+        # Add ticker list for CCXT environment compatibility
+        config = {
+            'price_array': price_array,
+            'tech_array': tech_array,
+            'ticker_list': ticker_list
+        }
+
+        return data, price_array, tech_array, time_array, config
 
     # main functions
     def download_data(self, ticker_list, start_date, end_date,
