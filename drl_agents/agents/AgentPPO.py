@@ -149,7 +149,19 @@ class AgentPPO(AgentBase):
         """update network"""
         obj_critic = None
         obj_actor = None
-        assert buf_len >= self.batch_size
+
+        # Adaptive batch sizing to handle data-constrained scenarios
+        original_batch_size = self.batch_size
+        if buf_len < self.batch_size:
+            self.batch_size = max(buf_len, 1)  # Ensure at least 1 sample
+            print(f"Warning: Buffer length ({buf_len}) < batch_size ({original_batch_size}). "
+                  f"Adapted batch_size to {self.batch_size}")
+
+        # Ensure we have enough samples for at least one update
+        if buf_len == 0:
+            print("Warning: Empty buffer, skipping update")
+            return 0.0, 0.0, 0.0
+
         for _ in range(int(1 + buf_len * self.repeat_times / self.batch_size)):
             indices = torch.randint(
                 buf_len,
@@ -182,6 +194,10 @@ class AgentPPO(AgentBase):
             self.optimizer_update(self.cri_optimizer, obj_critic)
             if self.if_cri_target:
                 self.soft_update(self.cri_target, self.cri, self.soft_update_tau)
+
+        # Restore original batch_size if it was adapted
+        if buf_len < original_batch_size:
+            self.batch_size = original_batch_size
 
         a_std_log = getattr(self.act, "a_std_log", torch.zeros(1)).mean()
         return obj_critic.item(), -obj_actor.item(), a_std_log.item()  # logging_tuple

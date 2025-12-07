@@ -49,7 +49,7 @@ def print_config_variables():
 
 def process_data():
     DataProcessor = BinanceProcessor()
-    data_from_processor, price_array, tech_array, time_array = DataProcessor.run(
+    data_from_processor, price_array, tech_array, time_array, config = DataProcessor.run(
         TICKER_LIST,
         TRAIN_START_DATE,
         VAL_END_DATE,

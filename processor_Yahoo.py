@@ -59,7 +59,7 @@ class Yahoofinance(_Base):
         for tic in ticker_list:
             temp_df = yf.download(tic, start=self.start_date, end=self.end_date, interval=self.time_interval)
             temp_df["tic"] = tic
-            self.dataframe = self.dataframe.append(temp_df)
+            self.dataframe = pd.concat([self.dataframe, temp_df], ignore_index=True)
         # reset the index, we want to use numbers as index instead of dates
         self.dataframe.reset_index(inplace=True)
         try:
