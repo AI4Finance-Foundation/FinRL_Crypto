@@ -39,6 +39,7 @@ import sys
 
 from distutils.dir_util import copy_tree
 from environment_Alpaca import CryptoEnvAlpaca
+from environment_CCXT import CryptoEnvCCXT
 from function_CPCV import *
 from function_train_test import *
 from config_main import *
@@ -193,8 +194,8 @@ def objective(trial, name_test, model_name, cwd, res_timestamp, gpu_id):
     # Load data from hard disk
     data_from_processor, price_array, tech_array, time_array = load_saved_data(TIMEFRAME, no_candles_for_train)
 
-    # Set constants
-    env = CryptoEnvAlpaca
+    # Set constants - Use CCXT environment for crypto trading
+    env = CryptoEnvCCXT
     break_step = erl_params["break_step"]
     cv = KFold(n_splits=KCV_groups)
 

@@ -1,1 +1,8 @@
-__pycache__/config_api.cpython-311.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.local
+.env.*.local

@@ -43,7 +43,7 @@ def test_data_download():
 
         # Загружаем данные
         print("📥 Загрузка данных...")
-        data, price_array, tech_array, time_array = processor.run(
+        data, price_array, tech_array, time_array, config = processor.run(
             ticker_list=ticker_list,
             start_date=start_date_str,
             end_date=end_date_str,
