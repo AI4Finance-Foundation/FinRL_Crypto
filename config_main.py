@@ -59,16 +59,15 @@ print(NUMBER_OF_SPLITS)
 no_candles_for_train = 20000
 no_candles_for_val = 5000
 
-TICKER_LIST = ['AAVEUSDT',
-               'AVAXUSDT',
+TICKER_LIST = [
                'BTCUSDT',
-               'NEARUSDT',
-               'LINKUSDT',
+            #    'NEARUSDT',
+            #    'LINKUSDT',
                'ETHUSDT',
-               'LTCUSDT',
-               'MATICUSDT',
-               'UNIUSDT',
-               'SOLUSDT',
+            #    'LTCUSDT',
+            #    'MATICUSDT',
+            #    'UNIUSDT',
+            #    'SOLUSDT',
                ]
 
 
@@ -84,6 +83,49 @@ ALPACA_LIMITS = np.array([0.01,
                           0.1,
                           0.01
                           ])
+
+# Minimum crypto limits for CCXT exchanges (BTC, ETH, etc.)
+CRYPTO_LIMITS = np.array([0.0001,  # BTC minimum (about $4)
+                          0.001,   # ETH minimum (about $2)
+                          0.01,    # NEAR minimum
+                          0.1,     # LINK minimum
+                          0.1,     # LTC minimum
+                          1.0,     # MATIC minimum
+                          0.1,     # UNI minimum
+                          0.01,    # SOL minimum
+                          0.1,     # Additional cryptos if needed
+                          0.001
+                          ])
+
+# CCXT Exchange Configuration
+CCXT_CONFIG = {
+    'exchange_name': 'binance',  # Default exchange
+    'sandbox': False,           # Set to True for testing
+    'enable_rate_limit': True,
+    'timeout': 30000,          # 30 seconds
+    'verbose': False,          # Set to True for debugging
+}
+
+# Environment parameters for CCXT
+ENV_PARAMS_CCXT = {
+    'lookback': 50,            # Lookback window for state
+    'norm_cash': 1e-6,         # Cash normalization factor
+    'norm_stocks': 100,        # Stock/crypto normalization factor
+    'norm_tech': 1,            # Technical indicator normalization
+    'norm_reward': 1,          # Reward normalization
+    'norm_action': 1,          # Action normalization
+}
+
+# Trading parameters
+TRADING_PARAMS = {
+    'initial_capital': 1000000,    # $1M initial capital
+    'buy_cost_pct': 0.001,         # 0.1% trading fee (Binance standard)
+    'sell_cost_pct': 0.001,        # 0.1% trading fee
+    'gamma': 0.99,                # Discount factor
+    'safety_factor': 0.95,        # 5% safety margin for orders
+    'cooldown_periods': 24,        # Periods before forced sell (2 hours for 5m)
+    'forced_sell_pct': 0.05,       # 5% forced sell after cooldown
+}
 
 
 TECHNICAL_INDICATORS_LIST = ['open',

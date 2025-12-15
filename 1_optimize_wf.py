@@ -34,6 +34,7 @@ from distutils.dir_util import copy_tree
 import pandas as pd
 
 from environment_Alpaca import CryptoEnvAlpaca
+from environment_CCXT import CryptoEnvCCXT
 from function_train_test import train_and_test
 from config_main import *
 
@@ -192,7 +193,8 @@ def objective(trial, name_test, model_name, cwd, res_timestamp, gpu_id):
     #######################################################################################################
     #######################################################################################################
 
-    env = CryptoEnvAlpaca
+    # Use CCXT environment for crypto trading
+    env = CryptoEnvCCXT
     break_step = erl_params['break_step']
 
     sharpe_list_bot = []

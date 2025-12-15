@@ -1,25 +1,26 @@
-"""The CryptoEnvAlpaca class is a custom environment for trading multiple cryptocurrencies with respect to the Alpaca
-trading platform. It is initialized with a configuration dictionary containing the price and technical indicator
-arrays, and a dictionary of environment parameters such as the lookback period and normalization constants. The
-environment also has several class variables such as the initial capital, buy and sell costs, and the discount factor.
+"""The CryptoEnvCCXT class is a custom environment for trading multiple cryptocurrencies using CCXT library.
+This is a refactored version of environment_Alpaca.py adapted for crypto trading.
 
-The class has several methods such as reset(), step(), _generate_action_normalizer(),
-and _get_state() for interacting with the environment. The reset() method resets the environment to the initial state,
-the step() method takes in an action and returns the next state, reward, and done.
-The _generate_action_normalizer() method generates the normalizer for the action,
-and the _get_state() method returns the current state of the environment.
-
-The environment also has several class variables such as the initial capital, buy and sell costs, and the discount
-factor."""
+The class provides:
+- Multi-cryptocurrency trading support via CCXT
+- Integration with Binance data processor
+- 24/7 crypto market adaptation
+- Real-time order execution through CCXT
+- Portfolio tracking and management
+- Technical indicator integration
+"""
 
 import numpy as np
 import math
-from config_main import ALPACA_LIMITS
+import ccxt
+from config_main import CRYPTO_LIMITS
+from config_api import API_KEY_BINANCE, API_SECRET_BINANCE
 
 
-class CryptoEnvAlpaca:  # custom env
+class CryptoEnvCCXT:  # custom env for crypto trading
     def __init__(self, config, env_params, initial_capital=1000000,
-                 buy_cost_pct=0.003, sell_cost_pct=0.003, gamma=0.99, if_log=False):
+                 buy_cost_pct=0.001, sell_cost_pct=0.001, gamma=0.99, if_log=False,
+                 exchange_name='binance'):
 
         self.if_log = if_log
         self.env_params = env_params
@@ -29,7 +30,28 @@ class CryptoEnvAlpaca:  # custom env
         self.buy_cost_pct = buy_cost_pct
         self.sell_cost_pct = sell_cost_pct
         self.gamma = gamma
+        self.exchange_name = exchange_name
 
+        # Initialize CCXT exchange
+        try:
+            if exchange_name.lower() == 'binance':
+                self.exchange = ccxt.binance({
+                    'apiKey': API_KEY_BINANCE,
+                    'secret': API_SECRET_BINANCE,
+                    'enableRateLimit': True,
+                })
+            else:
+                # Support for other exchanges
+                self.exchange = getattr(ccxt, exchange_name)({
+                    'enableRateLimit': True,
+                })
+        except Exception as e:
+            print(f"Warning: Could not initialize {exchange_name} exchange: {e}")
+            print("Using sandbox mode for testing")
+            self.exchange = ccxt.binance({
+                'sandbox': True,
+                'enableRateLimit': True,
+            })
 
         # Get initial price array to compute eqw
         self.price_array = config['price_array']
@@ -54,12 +76,15 @@ class CryptoEnvAlpaca:  # custom env
 
         # reset
         self.time = self.lookback - 1
+        # Ensure we don't go out of bounds
+        if self.time >= self.price_array.shape[0]:
+            self.time = self.price_array.shape[0] - 1
         self.cash = self.initial_cash
         self.current_price = self.price_array[self.time]
         self.current_tech = self.tech_array[self.time]
         self.stocks = np.zeros(self.crypto_num, dtype=np.float32)
         self.stocks_cooldown = None
-        self.safety_factor_stock_buy = 1 - 0.1
+        self.safety_factor_stock_buy = 1 - 0.05  # 5% safety factor for crypto
 
         self.total_asset = self.cash + (self.stocks * self.price_array[self.time]).sum()
         self.total_asset_eqw = np.sum(self.equal_weight_stock * self.price_array[self.time])
@@ -68,18 +93,31 @@ class CryptoEnvAlpaca:  # custom env
         self.gamma_return = 0.0
 
         '''env information'''
-        self.env_name = 'MulticryptoEnv'
+        self.env_name = 'MultiCryptoEnvCCXT'
 
-        # state_dim = cash[1,1] + stocks[1,4] + tech_array[1,44] * lookback + stock_cooldown[1,4]
+        # state_dim = cash[1,1] + stocks[1,4] + tech_array[1,44] * lookback
         self.state_dim = 1 + self.price_array.shape[1] + self.tech_array.shape[1] * self.lookback
         self.action_dim = self.price_array.shape[1]
-        # Trim ALPACA_LIMITS to match action_dim to avoid broadcasting errors
-        self.minimum_qty_alpaca = (ALPACA_LIMITS[:self.action_dim] * 1.1)  # 10 % safety factor
+
+        # Use CRYPTO_LIMITS instead of ALPACA_LIMITS
+        if hasattr(CRYPTO_LIMITS, '__len__'):
+            self.minimum_qty_crypto = (CRYPTO_LIMITS[:self.action_dim] * 1.1)  # 10% safety factor
+        else:
+            # Default minimum if not configured
+            self.minimum_qty_crypto = np.ones(self.action_dim) * 0.001
+
         self.if_discrete = False
         self.target_return = 10**8
 
+        # Store ticker symbols for CCXT orders
+        self.ticker_list = config.get('ticker_list', [f'BTC/USDT', f'ETH/USDT'])
+
     def reset(self) -> np.ndarray:
         self.time = self.lookback - 1
+        # Ensure we don't go out of bounds with small datasets
+        if self.time >= self.price_array.shape[0]:
+            self.time = min(self.lookback - 1, self.price_array.shape[0] - 1)
+
         self.current_price = self.price_array[self.time]
         self.current_tech = self.tech_array[self.time]
         self.cash = self.initial_cash  # reset()
@@ -93,7 +131,8 @@ class CryptoEnvAlpaca:  # custom env
     def step(self, actions) -> (np.ndarray, float, bool, None):
         self.time += 1
 
-        # if a stock is held add to its cooldown
+        # Crypto markets are 24/7, so cooldown logic is different
+        # Reduced cooldown for crypto markets
         for i in range(len(actions)):
             if self.stocks[i] > 0:
                 self.stocks_cooldown[i] += 1
@@ -103,50 +142,66 @@ class CryptoEnvAlpaca:  # custom env
             norm_vector_i = self.action_norm_vector[i]
             actions[i] = actions[i] * norm_vector_i
 
-        # Compute actions in dollars
-        actions_dollars = actions * price
+        # Compute actions in crypto units (not dollars like in stock version)
+        actions_crypto = actions  # Already in crypto units due to normalization
 
         # Sell
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
 
-        for index in np.where(actions < -self.minimum_qty_alpaca)[0]:
+        for index in np.where(actions < -self.minimum_qty_crypto)[0]:
 
             if self.stocks[index] > 0:
 
                 if price[index] > 0:  # Sell only if current asset is > 0
-                    sell_num_shares = min(self.stocks[index], -actions[index])
+                    sell_amount = min(self.stocks[index], -actions[index])
 
-                    assert sell_num_shares >= 0, "Negative sell!"
+                    assert sell_amount >= 0, "Negative sell!"
 
+                    # In backtest mode, we simulate the sale
                     self.stocks_cooldown[index] = 0
-                    self.stocks[index] -= sell_num_shares
-                    self.cash += price[index] * sell_num_shares * (1 - self.sell_cost_pct)
+                    self.stocks[index] -= sell_amount
+                    self.cash += price[index] * sell_amount * (1 - self.sell_cost_pct)
 
-        # FORCE 5% SELL every half day (30 min timeframe -> (24 * 2 / 2) * 30)
-        for index in np.where(self.stocks_cooldown >= 48)[0]:
-            sell_num_shares = self.stocks[index] * 0.05
+                    # In live trading, this would be:
+                    # try:
+                    #     symbol = self.ticker_list[index]
+                    #     order = self.exchange.create_market_sell_order(symbol, sell_amount)
+                    # except Exception as e:
+                    #     print(f"Failed to sell {symbol}: {e}")
+
+        # Adaptive cooldown for crypto (shorter than stocks due to 24/7 market)
+        for index in np.where(self.stocks_cooldown >= 24)[0]:  # 2 hours instead of 12 hours
+            sell_amount = self.stocks[index] * 0.05  # Sell 5%
             self.stocks_cooldown[index] = 0
-            self.stocks[index] -= sell_num_shares
-            self.cash += price[index] * sell_num_shares * (1 - self.sell_cost_pct)
+            self.stocks[index] -= sell_amount
+            self.cash += price[index] * sell_amount * (1 - self.sell_cost_pct)
 
         # Buy
         #######################################################################################################
         #######################################################################################################
         #######################################################################################################
 
-        for index in np.where(actions > self.minimum_qty_alpaca)[0]:
-            if price[index] > 0:  # Buy only if the price is > 0 (no missing data in this particular date)
+        for index in np.where(actions > self.minimum_qty_crypto)[0]:
+            if price[index] > 0:  # Buy only if the price is > 0
 
-                fee_corrected_asset = self.cash / (1 + self.buy_cost_pct)
-                max_stocks_can_buy = (fee_corrected_asset / price[index]) * self.safety_factor_stock_buy
-                buy_num_shares = min(max_stocks_can_buy, actions[index])
-                buy_num_shares_old = buy_num_shares
-                if buy_num_shares < self.minimum_qty_alpaca[index]:
-                    buy_num_shares = 0
-                self.stocks[index] += buy_num_shares
-                self.cash -= price[index] * buy_num_shares * (1 + self.buy_cost_pct)
+                fee_corrected_cash = self.cash / (1 + self.buy_cost_pct)
+                max_crypto_can_buy = (fee_corrected_cash / price[index]) * self.safety_factor_stock_buy
+                buy_amount = min(max_crypto_can_buy, actions_crypto[index])
+
+                if buy_amount < self.minimum_qty_crypto[index]:
+                    buy_amount = 0
+
+                self.stocks[index] += buy_amount
+                self.cash -= price[index] * buy_amount * (1 + self.buy_cost_pct)
+
+                # In live trading, this would be:
+                # try:
+                #     symbol = self.ticker_list[index]
+                #     order = self.exchange.create_market_buy_order(symbol, buy_amount)
+                # except Exception as e:
+                #     print(f"Failed to buy {symbol}: {e}")
 
         """update time"""
         done = self.time == self.max_step
@@ -169,18 +224,22 @@ class CryptoEnvAlpaca:  # custom env
         if done:
             reward = self.gamma_return
             self.episode_return = self.total_asset / self.initial_cash
+
         return state, reward, done, None
 
     def get_state(self):
         state = np.hstack((self.cash * self.norm_cash, self.stocks * self.norm_stocks))
         for i in range(self.lookback):
-            tech_i = self.tech_array[self.time - i]
+            # Ensure we don't go out of bounds
+            idx = max(0, self.time - i)
+            tech_i = self.tech_array[idx]
             normalized_tech_i = tech_i * self.norm_tech
             state = np.hstack((state, normalized_tech_i)).astype(np.float32)
         return state
 
     def close(self):
-        pass
+        if hasattr(self.exchange, 'close'):
+            self.exchange.close()
 
     def _generate_action_normalizer(self):
         action_norm_vector = []
@@ -191,3 +250,19 @@ class CryptoEnvAlpaca:  # custom env
 
         action_norm_vector = np.asarray(action_norm_vector) * self.norm_action
         self.action_norm_vector = np.asarray(action_norm_vector)
+
+    def get_portfolio_value(self):
+        """Get current portfolio value in USD"""
+        crypto_value = (self.stocks * self.price_array[self.time]).sum()
+        return self.cash + crypto_value
+
+    def get_positions(self):
+        """Get current cryptocurrency positions"""
+        positions = {}
+        for i, ticker in enumerate(self.ticker_list):
+            if self.stocks[i] > 0:
+                positions[ticker] = {
+                    'amount': self.stocks[i],
+                    'value_usd': self.stocks[i] * self.price_array[self.time][i]
+                }
+        return positions

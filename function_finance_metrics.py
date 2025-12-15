@@ -143,6 +143,101 @@ def _is_pandas(d):
     return isinstance(d, pd.DataFrame) or isinstance(d, pd.Series)
 
 
+def _safe_divide_for_ratio(numerator, denominator, default=0.0, cap_value=None):
+    """
+    Safely divide two numbers, handling zero denominator cases for financial ratios.
+
+    Args:
+        numerator: The dividend (e.g., excess return)
+        denominator: The divisor (e.g., volatility)
+        default: Value to return when denominator is 0 (default: 0.0)
+        cap_value: Maximum absolute value to cap the result (default: None for no cap)
+
+    Returns:
+        Division result, default value, or capped value
+    """
+    # Handle NaN denominator
+    try:
+        # Check if denominator is a pandas object or numpy array
+        if hasattr(denominator, 'iloc') or hasattr(denominator, 'values'):
+            # Pandas-like object - handle element-wise with numpy
+            denom_values = denominator.values if hasattr(denominator, 'values') else denominator
+            num_values = numerator.values if hasattr(numerator, 'values') else numerator
+
+            # Use numpy where for element-wise handling
+            result = np.where(
+                np.isnan(denom_values),
+                default,
+                np.where(
+                    denom_values == 0,
+                    np.where(
+                        np.isnan(num_values),
+                        np.nan,
+                        np.where(
+                            num_values == 0,
+                            0.0,
+                            np.sign(num_values) * (cap_value if cap_value is not None else 10.0)
+                        )
+                    ),
+                    num_values / denom_values
+                )
+            )
+
+            # Apply cap if specified
+            if cap_value is not None:
+                result = np.where(
+                    np.abs(result) > cap_value,
+                    np.sign(result) * cap_value,
+                    result
+                )
+
+            # Return same type as denominator
+            if hasattr(denominator, 'iloc'):
+                return denominator.__class__(result, index=denominator.index)
+            else:
+                return result
+
+        else:
+            # Scalar case
+            if np.isnan(denominator):
+                return default
+
+            if denominator == 0:
+                if np.isnan(numerator):
+                    return np.nan
+                elif numerator == 0:
+                    return 0.0
+                else:
+                    return np.sign(numerator) * (cap_value if cap_value is not None else 10.0)
+
+            # Normal division
+            result = numerator / denominator
+
+            # Apply cap if specified
+            if cap_value is not None and not np.isnan(result):
+                if abs(result) > cap_value:
+                    return np.sign(result) * cap_value
+
+            return result
+
+    except (TypeError, AttributeError):
+        # Fallback for edge cases
+        if np.isscalar(denominator):
+            if denominator == 0 or np.isnan(denominator):
+                return default
+            result = numerator / denominator
+            if cap_value is not None and not np.isnan(result) and abs(result) > cap_value:
+                return np.sign(result) * cap_value
+            return result
+        else:
+            # Array fallback - use numpy's where
+            return np.where(
+                np.abs(denominator) < 1e-10,  # Near-zero check
+                default,
+                numerator / denominator
+            )
+
+
 def _reindex_dates(source, target):
     """
     Reindex source data with target's index
@@ -268,10 +363,16 @@ def pct_to_log_return(pct_returns, fillna=True):
     if _is_pandas(pct_returns):
         if fillna:
             pct_returns = pct_returns.fillna(0)
+        # Clip values to prevent log of non-positive numbers
+        # Ensure 1 + pct_returns + 1e-8 > 0
+        pct_returns = pct_returns.clip(lower=-0.99999999)
         return np.log(1 + pct_returns + 1e-8)
     else:
         if fillna:
             pct_returns = np.nan_to_num(pct_returns)
+        # Clip values to prevent log of non-positive numbers
+        # Ensure 1 + pct_returns + 1e-8 > 0
+        pct_returns = np.clip(pct_returns, -0.99999999, None)
         return np.log(1 + pct_returns + 1e-8)
 
 
@@ -326,10 +427,14 @@ def kappa(returns, target_rtn, moment, log=True):
     else:
         mean = np.nanmean(excess)
 
-    kappa = mean / np.power(
+    lpm_power = np.power(
         LPM(returns, target_rtn, moment=moment), 1.0 / moment
     )
-    return kappa
+    # Handle division by zero in kappa ratio
+    if lpm_power == 0:
+        return 0.0
+    else:
+        return mean / lpm_power
 
 
 def kappa3(returns, target_rtn=0, log=True):
@@ -354,18 +459,22 @@ def sortino(returns, target_rtn=0, factor=1, log=True):
 
     if _is_pandas(returns):
         # return (returns.mean() - target_rtn) / \
-        return (
-                excess.mean()
-                / np.sqrt(LPM(returns, target_rtn, 2))
-                * np.sqrt(factor)
-        )
+        lpm = np.sqrt(LPM(returns, target_rtn, 2))
+        excess_mean = excess.mean()
+        # Handle division by zero - return 0 if lpm is 0
+        if lpm == 0:
+            return 0.0
+        else:
+            return excess_mean * np.sqrt(factor) / lpm
     else:
         # return np.nanmean(returns - target_rtn) / \
-        return (
-                np.nanmean(excess)
-                / np.sqrt(LPM(returns, target_rtn, 2))
-                * np.sqrt(factor)
-        )
+        lpm = np.sqrt(LPM(returns, target_rtn, 2))
+        excess_mean = np.nanmean(excess)
+        # Handle division by zero - return 0 if lpm is 0
+        if lpm == 0:
+            return 0.0
+        else:
+            return excess_mean * np.sqrt(factor) / lpm
 
 
 def sortino_iid(rtns, bench=0, factor=1, log=True):
@@ -385,7 +494,12 @@ def sortino_iid(rtns, bench=0, factor=1, log=True):
 
     # print(excess, semi_std, np.std(neg_rtns, ddof=0))
 
-    return np.sqrt(factor) * excess.mean() / semi_std
+    # Handle division by zero in sortino ratio
+    excess_mean = excess.mean()
+    if semi_std == 0:
+        return 0.0
+    else:
+        return np.sqrt(factor) * excess_mean / semi_std
 
 
 # def rolling_lpm(returns, target_rtn, moment, window):
@@ -457,14 +571,26 @@ def sharpe_iid(rtns, bench=0, factor=1, log=True):
 
     if _is_pandas(rtns):
         excess_mean = excess.mean()
-        sharpe = np.sqrt(factor) * excess_mean / excess.std(ddof=1)
         vol = excess.std(ddof=1)
+        # Handle division by zero - return 0 sharpe if volatility is 0
+        if vol == 0:
+            sharpe = 0.0
+        else:
+            sharpe = np.sqrt(factor) * excess_mean / vol
         return sharpe, vol
     else:
         # numpy way
         excess_mean = np.nanmean(excess, axis=0)
-        sharpe =  np.sqrt(factor) * excess_mean / np.nanstd(excess, axis=0, ddof=1)
         vol = np.nanstd(excess, axis=0, ddof=1)
+        # Handle division by zero - return 0 sharpe if volatility is 0
+        if np.isscalar(vol):
+            if vol == 0:
+                sharpe = 0.0
+            else:
+                sharpe = np.sqrt(factor) * excess_mean / vol
+        else:
+            # Handle array case
+            sharpe = np.where(vol == 0, 0.0, np.sqrt(factor) * excess_mean / vol)
         return sharpe, vol
 
 def sharpe_iid_rolling(
@@ -481,7 +607,19 @@ def sharpe_iid_rolling(
         excess = pct_to_log_excess(rtns, bench)
 
     roll = excess.rolling(window=window, min_periods=min_periods)
-    return np.sqrt(factor) * roll.mean() / roll.std(ddof=1)
+    # Handle rolling division by zero using numpy's where for element-wise operation
+    roll_mean = roll.mean()
+    roll_std = roll.std(ddof=1)
+
+    # Use numpy where for vectorized safe division
+    result = np.where(
+        roll_std == 0,
+        0.0,
+        np.sqrt(factor) * roll_mean / roll_std
+    )
+
+    # Return as pandas Series with same index
+    return pd.Series(result, index=roll_mean.index)
 
 
 def sharpe_iid_adjusted(rtns, bench=0, factor=1, log=True):
@@ -813,7 +951,15 @@ def calmar_ratio(returns, factor=trading_days, log=True):
     # max_dd = np.abs(get_drawdown(cum_return)['drawdown'].min())
     max_dd = np.abs(drawdown(cum_return).min())
 
-    return annual_return / max_dd
+    # Handle division by zero in Calmar ratio
+    if max_dd == 0:
+        return 0.0
+    else:
+        result = annual_return / max_dd
+        # Cap at reasonable value
+        if abs(result) > 100.0:
+            return np.sign(result) * 100.0
+        return result
 
 
 def write_metrics_to_results(name, file_path, drl_cumrets, drl_annual_ret, drl_annual_vol, drl_sharpe_rat, vol,
